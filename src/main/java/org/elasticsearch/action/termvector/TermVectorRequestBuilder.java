@@ -22,6 +22,7 @@ package org.elasticsearch.action.termvector;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequestBuilder;
 import org.elasticsearch.client.Client;
+import org.elasticsearch.index.VersionType;
 
 /**
  */
@@ -90,6 +91,23 @@ public class TermVectorRequestBuilder extends ActionRequestBuilder<TermVectorReq
 
     public TermVectorRequestBuilder setSelectedFields(String... fields) {
         request.selectedFields(fields);
+        return this;
+    }
+
+    /**
+     * Sets the version, which will cause the get operation to only be performed if a matching
+     * version exists and no changes happened on the doc since then.
+     */
+    public TermVectorRequestBuilder setVersion(long version) {
+        request.version(version);
+        return this;
+    }
+
+    /**
+     * Sets the versioning type. Defaults to {@link org.elasticsearch.index.VersionType#INTERNAL}.
+     */
+    public TermVectorRequestBuilder setVersionType(VersionType versionType) {
+        request.versionType(versionType);
         return this;
     }
 

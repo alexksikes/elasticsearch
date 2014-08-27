@@ -28,7 +28,9 @@ import org.elasticsearch.action.get.MultiGetRequest;
 import org.elasticsearch.action.support.single.shard.SingleShardOperationRequest;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.lucene.uid.Versions;
 import org.elasticsearch.common.xcontent.XContentParser;
+import org.elasticsearch.index.VersionType;
 
 import java.io.IOException;
 import java.util.*;
@@ -47,6 +49,10 @@ public class TermVectorRequest extends SingleShardOperationRequest<TermVectorReq
     private String id;
 
     private String routing;
+
+    private VersionType versionType = VersionType.INTERNAL;
+
+    private long version = Versions.MATCH_ANY;
 
     protected String preference;
 
@@ -266,6 +272,24 @@ public class TermVectorRequest extends SingleShardOperationRequest<TermVectorReq
         return this;
     }
 
+    public long version() {
+        return version;
+    }
+
+    public TermVectorRequest version(long version) {
+        this.version = version;
+        return this;
+    }
+
+    public VersionType versionType() {
+        return versionType;
+    }
+
+    public TermVectorRequest versionType(VersionType versionType) {
+        this.versionType = versionType;
+        return this;
+    }
+
     private void setFlag(Flag flag, boolean set) {
         if (set && !flagsEnum.contains(flag)) {
             flagsEnum.add(flag);
@@ -320,6 +344,8 @@ public class TermVectorRequest extends SingleShardOperationRequest<TermVectorReq
                 selectedFields.add(in.readString());
             }
         }
+        version = Versions.readVersionWithVLongForBW(in);
+        versionType = VersionType.fromValue(in.readByte());
     }
 
     @Override
@@ -346,6 +372,8 @@ public class TermVectorRequest extends SingleShardOperationRequest<TermVectorReq
         } else {
             out.writeVInt(0);
         }
+        Versions.writeVersionWithVLongForBW(version, out);
+        out.writeByte(versionType.getValue());
     }
 
     public static enum Flag {
@@ -392,6 +420,10 @@ public class TermVectorRequest extends SingleShardOperationRequest<TermVectorReq
                     termVectorRequest.id = parser.text();
                 } else if ("_routing".equals(currentFieldName) || "routing".equals(currentFieldName)) {
                     termVectorRequest.routing = parser.text();
+                } else if ("_version".equals(currentFieldName) || "version".equals(currentFieldName)) {
+                    termVectorRequest.version = parser.longValue();
+                } else if ("_version_type".equals(currentFieldName) || "_versionType".equals(currentFieldName) || "version_type".equals(currentFieldName) || "versionType".equals(currentFieldName)) {
+                    termVectorRequest.versionType = VersionType.fromString(parser.text());
                 } else {
                     throw new ElasticsearchParseException("The parameter " + currentFieldName
                             + " is not valid for term vector request!");

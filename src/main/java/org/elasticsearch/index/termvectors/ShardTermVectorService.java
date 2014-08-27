@@ -64,33 +64,35 @@ public class ShardTermVectorService extends AbstractIndexShardComponent {
     }
 
     public TermVectorResponse getTermVector(TermVectorRequest request, String concreteIndex) {
-        final Engine.Searcher searcher = indexShard.acquireSearcher("term_vector");
-        IndexReader topLevelReader = searcher.reader();
         final TermVectorResponse termVectorResponse = new TermVectorResponse(concreteIndex, request.type(), request.id());
         final Term uidTerm = new Term(UidFieldMapper.NAME, Uid.createUidAsBytes(request.type(), request.id()));
+
+        Engine.GetResult get = indexShard.get(new Engine.Get(false, uidTerm).version(request.version()).versionType(request.versionType()));
+        if (!get.exists()) {
+            termVectorResponse.setExists(false);
+            get.release();
+            return termVectorResponse;
+        }
         try {
+            IndexReader topLevelReader = get.searcher().reader();
             Fields topLevelFields = MultiFields.getFields(topLevelReader);
-            Versions.DocIdAndVersion docIdAndVersion = Versions.loadDocIdAndVersion(topLevelReader, uidTerm);
-            if (docIdAndVersion != null) {
-                /* handle potential wildcards in fields */
-                if (request.selectedFields() != null) {
-                    handleFieldWildcards(request);
-                }
-                /* generate term vectors if not available */
-                Fields termVectorsByField = docIdAndVersion.context.reader().getTermVectors(docIdAndVersion.docId);
-                if (request.selectedFields() != null) {
-                    termVectorsByField = generateTermVectorsIfNeeded(termVectorsByField, request, uidTerm, false);
-                }
-                termVectorResponse.setFields(termVectorsByField, request.selectedFields(), request.getFlags(), topLevelFields);
-                termVectorResponse.setExists(true);
-                termVectorResponse.setDocVersion(docIdAndVersion.version);
-            } else {
-                termVectorResponse.setExists(false);
+            Versions.DocIdAndVersion docIdAndVersion = get.docIdAndVersion();
+            /* handle potential wildcards in fields */
+            if (request.selectedFields() != null) {
+                handleFieldWildcards(request);
             }
+            /* generate term vectors if not available */
+            Fields termVectorsByField = topLevelReader.getTermVectors(docIdAndVersion.docId);
+            if (request.selectedFields() != null) {
+                termVectorsByField = generateTermVectorsIfNeeded(termVectorsByField, request, get);
+            }
+            termVectorResponse.setFields(termVectorsByField, request.selectedFields(), request.getFlags(), topLevelFields);
+            termVectorResponse.setExists(true);
+            termVectorResponse.setDocVersion(docIdAndVersion.version);
         } catch (Throwable ex) {
             throw new ElasticsearchException("failed to execute term vector request", ex);
         } finally {
-            searcher.close();
+            get.release();
         }
         return termVectorResponse;
     }
@@ -103,7 +105,7 @@ public class ShardTermVectorService extends AbstractIndexShardComponent {
         request.selectedFields(fieldNames.toArray(Strings.EMPTY_ARRAY));
     }
 
-    private Fields generateTermVectorsIfNeeded(Fields termVectorsByField, TermVectorRequest request, Term uidTerm, boolean realTime) throws IOException {
+    private Fields generateTermVectorsIfNeeded(Fields termVectorsByField, TermVectorRequest request, Engine.GetResult get) throws IOException {
         List<String> validFields = new ArrayList<>();
         for (String field : request.selectedFields()) {
             FieldMapper fieldMapper = indexShard.mapperService().smartNameFieldMapper(field);
@@ -123,19 +125,9 @@ public class ShardTermVectorService extends AbstractIndexShardComponent {
             return termVectorsByField;
         }
 
-        Engine.GetResult get = indexShard.get(new Engine.Get(realTime, uidTerm));
-        Fields generatedTermVectors;
-        try {
-            if (!get.exists()) {
-                return termVectorsByField;
-            }
-            // TODO: support for fetchSourceContext?
-            GetResult getResult = indexShard.getService().get(
-                    get, request.id(), request.type(), validFields.toArray(Strings.EMPTY_ARRAY), null, false);
-            generatedTermVectors = generateTermVectors(getResult.getFields().values(), request.offsets());
-        } finally {
-            get.release();
-        }
+        GetResult getResult = indexShard.getService().get(
+                get, request.id(), request.type(), validFields.toArray(Strings.EMPTY_ARRAY), null, false);
+        Fields generatedTermVectors = generateTermVectors(getResult.getFields().values(), request.offsets());
         if (termVectorsByField == null) {
             return generatedTermVectors;
         } else {

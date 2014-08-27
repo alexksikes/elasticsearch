@@ -27,10 +27,12 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentParser;
+import org.elasticsearch.index.VersionType;
 import org.elasticsearch.rest.BaseRestHandler;
 import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestRequest;
+import org.elasticsearch.rest.action.support.RestActions;
 import org.elasticsearch.rest.action.support.RestToXContentListener;
 
 import java.util.HashSet;
@@ -84,6 +86,8 @@ public class RestTermVectorAction extends BaseRestHandler {
         termVectorRequest.termStatistics(request.paramAsBoolean("term_statistics", termVectorRequest.termStatistics()));
         termVectorRequest.fieldStatistics(request.paramAsBoolean("fieldStatistics", termVectorRequest.fieldStatistics()));
         termVectorRequest.fieldStatistics(request.paramAsBoolean("field_statistics", termVectorRequest.fieldStatistics()));
+        termVectorRequest.version(RestActions.parseVersion(request, termVectorRequest.version()));
+        termVectorRequest.versionType(VersionType.fromString(request.param("version_type"), termVectorRequest.versionType()));
     }
 
     static public void addFieldStringsFromParameter(TermVectorRequest termVectorRequest, String fields) {
