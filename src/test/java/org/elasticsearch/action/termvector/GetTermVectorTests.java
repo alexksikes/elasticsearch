@@ -20,6 +20,7 @@
 package org.elasticsearch.action.termvector;
 
 import com.carrotsearch.hppc.ObjectIntOpenHashMap;
+import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import org.apache.lucene.analysis.payloads.PayloadHelper;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.*;
@@ -666,18 +667,14 @@ public class GetTermVectorTests extends AbstractTermVectorTests {
     }
 
     @Test
+//    @Repeat (iterations = 5)
     public void testDuelWithAndWithoutTermVectors() throws ElasticsearchException, IOException, ExecutionException, InterruptedException {
         // setup indices
         String[] indexNames = new String[] {"with_tv", "without_tv"};
-        ImmutableSettings.Builder settings = settingsBuilder()
-                .put(indexSettings())
-                .put("index.analysis.analyzer", "standard");
         assertAcked(prepareCreate(indexNames[0])
-                .setSettings(settings)
-                .addMapping("type1", "field1", "type=string,term_vector=with_positions_offsets"));
+                .addMapping("type1", "field1", "type=string,term_vector=with_positions_offsets,analyzer=keyword"));
         assertAcked(prepareCreate(indexNames[1])
-                .setSettings(settings)
-                .addMapping("type1", "field1", "type=string,term_vector=no"));
+                .addMapping("type1", "field1", "type=string,term_vector=no,analyzer=keyword"));
         ensureGreen();
 
         // index documents with and without term vectors
@@ -690,17 +687,17 @@ public class GetTermVectorTests extends AbstractTermVectorTests {
                 "Allocating experimental units via random assignment to a treatment or control condition.",
                 "Transforming a data stream (such as when using a scrambler in telecommunications)."};
 
-        List<IndexRequestBuilder> indexBuilders = new ArrayList<>();
-        for (int i = 0; i < content.length; i++) {
-            for (String indexName : indexNames) {
+        for (String indexName : indexNames) {
+            List<IndexRequestBuilder> indexBuilders = new ArrayList<>();
+            for (int i = 0; i < content.length; i++) {
                 indexBuilders.add(client().prepareIndex()
                         .setIndex(indexName)
                         .setType("type1")
                         .setId(String.valueOf(i))
                         .setSource("field1", content[i]));
             }
+            indexRandom(true, indexBuilders);
         }
-        indexRandom(true, indexBuilders);
 
         // request tvs and compare from each index
         for (int i = 0; i < content.length; i++) {
