@@ -687,8 +687,8 @@ public class GetTermVectorTests extends AbstractTermVectorTests {
                 "Allocating experimental units via random assignment to a treatment or control condition.",
                 "Transforming a data stream (such as when using a scrambler in telecommunications)."};
 
+        List<IndexRequestBuilder> indexBuilders = new ArrayList<>();
         for (String indexName : indexNames) {
-            List<IndexRequestBuilder> indexBuilders = new ArrayList<>();
             for (int i = 0; i < content.length; i++) {
                 indexBuilders.add(client().prepareIndex()
                         .setIndex(indexName)
@@ -696,8 +696,8 @@ public class GetTermVectorTests extends AbstractTermVectorTests {
                         .setId(String.valueOf(i))
                         .setSource("field1", content[i]));
             }
-            indexRandom(true, indexBuilders);
         }
+        indexRandom(true, indexBuilders);
 
         // request tvs and compare from each index
         for (int i = 0; i < content.length; i++) {
