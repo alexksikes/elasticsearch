@@ -689,28 +689,27 @@ public class GetTermVectorTests extends AbstractTermVectorTests {
 
         List<IndexRequestBuilder> indexBuilders = new ArrayList<>();
         for (String indexName : indexNames) {
-            for (int i = 0; i < content.length; i++) {
+            for (int id = 0; id < content.length; id++) {
                 indexBuilders.add(client().prepareIndex()
                         .setIndex(indexName)
                         .setType("type1")
-                        .setId(String.valueOf(i))
-                        .setSource("field1", content[i]));
+                        .setId(String.valueOf(id))
+                        .setSource("field1", content[id]));
             }
         }
         indexRandom(true, indexBuilders);
 
         // request tvs and compare from each index
-        for (int i = 0; i < content.length; i++) {
+        for (int id = 0; id < content.length; id++) {
             Fields[] fields = new Fields[2];
-            int idx = 0;
-            for (String indexName : indexNames) {
-                TermVectorResponse resp = client().prepareTermVector(indexName, "type1", String.valueOf(i))
+            for (int j = 0; j < indexNames.length; j++) {
+                TermVectorResponse resp = client().prepareTermVector(indexNames[j], "type1", String.valueOf(id))
                         .setOffsets(true)
                         .setPositions(true)
                         .setSelectedFields("field1")
                         .get();
-                assertThat("doc with index: test_with_tv, type1 and id: " + i, resp.isExists(), equalTo(true));
-                fields[idx++] = resp.getFields();
+                assertThat("doc with index: " + indexNames[j] + ", type1 and id: " + id, resp.isExists(), equalTo(true));
+                fields[j] = resp.getFields();
             }
             compareTermVectors("field1", fields[0], fields[1]);
         }
