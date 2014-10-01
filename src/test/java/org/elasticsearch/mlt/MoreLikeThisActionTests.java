@@ -29,6 +29,7 @@ import org.elasticsearch.action.search.SearchPhaseExecutionException;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.client.Client;
+import org.elasticsearch.common.compress.CompressedString;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
@@ -570,7 +571,7 @@ public class MoreLikeThisActionTests extends ElasticsearchIntegrationTest {
     }
 
     @Test
-    @LuceneTestCase.AwaitsFix(bugUrl = "alex k working on it")
+//    @LuceneTestCase.AwaitsFix(bugUrl = "alex k working on it")
     public void testMoreLikeThisArtificialDocs() throws Exception {
         int numFields = randomIntBetween(5, 10);
 
@@ -607,14 +608,18 @@ public class MoreLikeThisActionTests extends ElasticsearchIntegrationTest {
     }
 
     @Test
-    @LuceneTestCase.AwaitsFix(bugUrl = "alex k working on it")
+//    @LuceneTestCase.AwaitsFix(bugUrl = "alex k working on it")
     public void testMoreLikeThisMalformedArtificialDocs() throws Exception {
         logger.info("Creating an index with a single document ...");
         indexRandom(true, client().prepareIndex("test", "type1", "1").setSource(jsonBuilder()
                 .startObject()
-                    .field("text", "Hello World!")
-                    .field("date", "2009-01-01")
+                .field("text", "Hello World!")
+                .field("date", "2009-01-01")
                 .endObject()));
+        ensureGreen("test");
+
+        CompressedString source = client().admin().indices().prepareGetMappings("test").addTypes("type1").get().getMappings().get("test").get("type1").source();
+        logger.info(source.toString());
 
         logger.info("Checking with a malformed field value ...");
         XContentBuilder malformedFieldDoc = jsonBuilder()
