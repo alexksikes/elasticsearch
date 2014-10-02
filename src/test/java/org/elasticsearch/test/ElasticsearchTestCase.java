@@ -453,21 +453,27 @@ public abstract class ElasticsearchTestCase extends AbstractRandomizedTest {
         return RandomizedTest.randomFrom(values);
     }
 
-    public static String[] generateRandomStringArray(int maxArraySize, int maxStringSize, boolean allowNull) {
+    public static String[] generateRandomStringArray(int maxArraySize, int maxStringSize, boolean allowNull, boolean allowEmpty) {
         if (allowNull && randomBoolean()) {
             return null;
         }
         String[] array = new String[randomInt(maxArraySize)]; // allow empty arrays
         for (int i = 0; i < array.length; i++) {
             array[i] = randomAsciiOfLength(maxStringSize);
+            if (array[i].isEmpty() && !allowEmpty) {
+                array[i] = randomAsciiOfLengthBetween(1, maxArraySize);
+            }
         }
         return array;
     }
 
-    public static String[] generateRandomStringArray(int maxArraySize, int maxStringSize) {
-        return generateRandomStringArray(maxArraySize, maxStringSize, false);
+    public static String[] generateRandomStringArray(int maxArraySize, int maxStringSize, boolean allowNull) {
+        return generateRandomStringArray(maxArraySize, maxStringSize, allowNull, true);
     }
 
+    public static String[] generateRandomStringArray(int maxArraySize, int maxStringSize) {
+        return generateRandomStringArray(maxArraySize, maxStringSize, false, true);
+    }
 
     /**
      * If a test is annotated with {@link org.elasticsearch.test.ElasticsearchTestCase.CompatibilityVersion}

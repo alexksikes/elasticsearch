@@ -19,6 +19,7 @@
 
 package org.elasticsearch.mlt;
 
+import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.LuceneTestCase;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthStatus;
@@ -570,7 +571,6 @@ public class MoreLikeThisActionTests extends ElasticsearchIntegrationTest {
     }
 
     @Test
-    @LuceneTestCase.AwaitsFix(bugUrl = "alex k working on it")
     public void testMoreLikeThisArtificialDocs() throws Exception {
         int numFields = randomIntBetween(5, 10);
 
@@ -580,13 +580,13 @@ public class MoreLikeThisActionTests extends ElasticsearchIntegrationTest {
             mapping.startObject("field"+i).field("type", "string").endObject();
         }
         mapping.endObject().endObject().endObject();
-        assertAcked(prepareCreate("test").addMapping("type1", mapping).get());
-        ensureGreen();
+        assertAcked(prepareCreate("test").addMapping("type1", mapping));
+        ensureGreen("test");
 
         logger.info("Indexing a single document ...");
         XContentBuilder doc = jsonBuilder().startObject();
         for (int i = 0; i < numFields; i++) {
-            doc.field("field"+i, generateRandomStringArray(5, 10));
+            doc.field("field"+i, generateRandomStringArray(5, 10, false, false));
         }
         doc.endObject();
         List<IndexRequestBuilder> builders = new ArrayList<>();
@@ -603,6 +603,9 @@ public class MoreLikeThisActionTests extends ElasticsearchIntegrationTest {
         SearchResponse response = client().prepareSearch("test").setTypes("type1")
                 .setQuery(mltQuery).get();
         assertSearchResponse(response);
+        if (response.getHits().totalHits() == 0) {
+            System.out.println("we are in!");
+        }
         assertHitCount(response, 1);
     }
 
