@@ -43,6 +43,7 @@ import org.elasticsearch.index.query.ParsedQuery;
 import org.elasticsearch.index.query.QueryParseContext;
 import org.elasticsearch.index.shard.IndexShard;
 import org.elasticsearch.index.similarity.SimilarityService;
+import org.elasticsearch.index.termvectors.ShardTermVectorsService;
 import org.elasticsearch.script.ScriptService;
 import org.elasticsearch.search.Scroll;
 import org.elasticsearch.search.SearchShardTarget;
@@ -53,6 +54,7 @@ import org.elasticsearch.search.fetch.fielddata.FieldDataFieldsContext;
 import org.elasticsearch.search.fetch.innerhits.InnerHitsContext;
 import org.elasticsearch.search.fetch.script.ScriptFieldsContext;
 import org.elasticsearch.search.fetch.source.FetchSourceContext;
+import org.elasticsearch.search.fetch.termvectors.TermVectorsContext;
 import org.elasticsearch.search.highlight.SearchContextHighlight;
 import org.elasticsearch.search.lookup.SearchLookup;
 import org.elasticsearch.search.query.QuerySearchResult;
@@ -192,6 +194,18 @@ public abstract class SearchContext implements Releasable, HasContextAndHeaders 
 
     public abstract SearchContext fetchSourceContext(FetchSourceContext fetchSourceContext);
 
+    public boolean hasTermVectorsContext() {
+        return false; // only available for DefaultSearchContext
+    }
+
+    public TermVectorsContext termVectorsContext() {
+        return null; // only available for DefaultSearchContext
+    }
+
+    public SearchContext termVectorsContext(TermVectorsContext termVectorsContext) {
+        return null; // only available for DefaultSearchContext
+    }
+
     public abstract ContextIndexSearcher searcher();
 
     public abstract IndexShard indexShard();
@@ -205,6 +219,10 @@ public abstract class SearchContext implements Releasable, HasContextAndHeaders 
     public abstract SimilarityService similarityService();
 
     public abstract ScriptService scriptService();
+
+    public ShardTermVectorsService termVectorsService() {
+        return null; // only available for DefaultSearchContext
+    }
 
     public abstract PageCacheRecycler pageCacheRecycler();
 

@@ -57,6 +57,7 @@ import org.elasticsearch.search.fetch.matchedqueries.MatchedQueriesFetchSubPhase
 import org.elasticsearch.search.fetch.script.ScriptFieldsFetchSubPhase;
 import org.elasticsearch.search.fetch.source.FetchSourceContext;
 import org.elasticsearch.search.fetch.source.FetchSourceSubPhase;
+import org.elasticsearch.search.fetch.termvectors.TermVectorsFetchSubPhase;
 import org.elasticsearch.search.fetch.version.VersionFetchSubPhase;
 import org.elasticsearch.search.highlight.HighlightPhase;
 import org.elasticsearch.search.internal.InternalSearchHit;
@@ -87,10 +88,10 @@ public class FetchPhase implements SearchPhase {
     public FetchPhase(HighlightPhase highlightPhase, ScriptFieldsFetchSubPhase scriptFieldsPhase,
                       MatchedQueriesFetchSubPhase matchedQueriesPhase, ExplainFetchSubPhase explainPhase, VersionFetchSubPhase versionPhase,
                       FetchSourceSubPhase fetchSourceSubPhase, FieldDataFieldsFetchSubPhase fieldDataFieldsFetchSubPhase, 
-                      InnerHitsFetchSubPhase innerHitsFetchSubPhase) {
+                      InnerHitsFetchSubPhase innerHitsFetchSubPhase, TermVectorsFetchSubPhase termVectorsFetchSubPhase) {
         innerHitsFetchSubPhase.setFetchPhase(this);
         this.fetchSubPhases = new FetchSubPhase[]{scriptFieldsPhase, matchedQueriesPhase, explainPhase, highlightPhase,
-                fetchSourceSubPhase, versionPhase, fieldDataFieldsFetchSubPhase, innerHitsFetchSubPhase};
+                fetchSourceSubPhase, versionPhase, fieldDataFieldsFetchSubPhase, innerHitsFetchSubPhase, termVectorsFetchSubPhase};
     }
 
     @Override

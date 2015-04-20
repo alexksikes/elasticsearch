@@ -19,7 +19,6 @@
 package org.elasticsearch.search.fetch;
 
 import com.google.common.collect.Maps;
-
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;

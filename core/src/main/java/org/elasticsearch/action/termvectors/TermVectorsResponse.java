@@ -104,7 +104,7 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         this.id = id;
     }
 
-    TermVectorsResponse() {
+    public TermVectorsResponse() {
     }
 
     @Override
@@ -205,9 +205,13 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         builder.field(FieldStrings._VERSION, docVersion);
         builder.field(FieldStrings.FOUND, isExists());
         builder.field(FieldStrings.TOOK, tookInMillis);
-        if (!isExists()) {
-            return builder;
+        if (isExists()) {
+            buildTermVectors(builder);
         }
+        return builder;
+    }
+    
+    public void buildTermVectors(XContentBuilder builder) throws IOException {
         builder.startObject(FieldStrings.TERM_VECTORS);
         final CharsRefBuilder spare = new CharsRefBuilder();
         Fields theFields = getFields();
@@ -216,12 +220,6 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
             buildField(builder, spare, theFields, fieldIter);
         }
         builder.endObject();
-        if (hasVector()) {
-            builder.startObject(FieldStrings.VECTOR);
-            getVector().toXContent(builder, params);
-            builder.endObject();
-        }
-        return builder;
     }
 
     private void buildField(XContentBuilder builder, final CharsRefBuilder spare, Fields theFields, Iterator<String> fieldIter) throws IOException {
