@@ -29,6 +29,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.termvectors.TermVectorsRequest.Flag;
+import org.elasticsearch.action.termvectors.vectorize.Vectorizer;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
@@ -75,9 +76,11 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         public static final XContentBuilderString TOOK = new XContentBuilderString("took");
         public static final XContentBuilderString TERMS = new XContentBuilderString("terms");
         public static final XContentBuilderString TERM_VECTORS = new XContentBuilderString("term_vectors");
+        public static final XContentBuilderString VECTOR = new XContentBuilderString("vector");
     }
 
     private BytesReference termVectors;
+    private BytesReference vector;
     private BytesReference headerRef;
     private String index;
     private String type;
@@ -119,11 +122,19 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
             out.writeBytesReference(headerRef);
             out.writeBytesReference(termVectors);
         }
+        out.writeBoolean(hasVector());
+        if (hasVector()) {
+            out.writeBytesReference(vector);
+        }
     }
 
     private boolean hasTermVectors() {
         assert (headerRef == null && termVectors == null) || (headerRef != null && termVectors != null);
         return headerRef != null;
+    }
+
+    private boolean hasVector() {
+        return vector != null;
     }
 
     @Override
@@ -138,6 +149,9 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         if (in.readBoolean()) {
             headerRef = in.readBytesReference();
             termVectors = in.readBytesReference();
+        }
+        if (in.readBoolean()) {
+            vector = in.readBytesReference();
         }
     }
 
@@ -169,6 +183,14 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
             };
         }
     }
+    
+    public Vectorizer.SparseVector getVector() throws IOException {
+        if (hasVector()) {
+            return Vectorizer.readVector(vector);
+        } else {
+            return Vectorizer.EMPTY_SPARSE_VECTOR;
+        }
+    }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
@@ -194,6 +216,11 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
             buildField(builder, spare, theFields, fieldIter);
         }
         builder.endObject();
+        if (hasVector()) {
+            builder.startObject(FieldStrings.VECTOR);
+            getVector().toXContent(builder, params);
+            builder.endObject();
+        }
         return builder;
     }
 
@@ -353,20 +380,24 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
     }
 
     public void setFields(Fields termVectorsByField, Set<String> selectedFields, EnumSet<Flag> flags, Fields topLevelFields) throws IOException {
-        setFields(termVectorsByField, selectedFields, flags, topLevelFields, null, null);
+        setFields(termVectorsByField, selectedFields, flags, topLevelFields, null, null, null);
     }
 
     public void setFields(Fields termVectorsByField, Set<String> selectedFields, EnumSet<Flag> flags, Fields topLevelFields, @Nullable AggregatedDfs dfs,
-                          TermVectorsFilter termVectorsFilter) throws IOException {
+                          TermVectorsFilter termVectorsFilter, @Nullable Vectorizer vectorizer) throws IOException {
         TermVectorsWriter tvw = new TermVectorsWriter(this);
 
         if (termVectorsByField != null) {
-            tvw.setFields(termVectorsByField, selectedFields, flags, topLevelFields, dfs, termVectorsFilter);
+            tvw.setFields(termVectorsByField, selectedFields, flags, topLevelFields, dfs, termVectorsFilter, vectorizer);
         }
     }
 
     public void setTermVectorsField(BytesStreamOutput output) {
         termVectors = output.bytes();
+    }
+
+    public void setVector(BytesReference output) {
+        vector = output;
     }
 
     public void setHeader(BytesReference header) {

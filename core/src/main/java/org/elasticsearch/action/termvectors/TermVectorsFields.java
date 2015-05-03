@@ -483,7 +483,7 @@ public final class TermVectorsFields extends Fields {
     // the writer writes a 0 for -1 or value +1 and accordingly we have to
     // substract 1 again
     // adds one to mock not existing term freq
-    int readPotentiallyNegativeVInt(StreamInput stream) throws IOException {
+    public static int readPotentiallyNegativeVInt(StreamInput stream) throws IOException {
         return stream.readVInt() - 1;
     }
 
@@ -491,7 +491,7 @@ public final class TermVectorsFields extends Fields {
     // case, the writer writes a 0 for -1 or value +1 and accordingly we have to
     // substract 1 again
     // adds one to mock not existing term freq
-    long readPotentiallyNegativeVLong(StreamInput stream) throws IOException {
+    public static long readPotentiallyNegativeVLong(StreamInput stream) throws IOException {
         return stream.readVLong() - 1;
     }
 }

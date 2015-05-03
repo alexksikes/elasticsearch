@@ -166,7 +166,7 @@ public class ShardTermVectorsService extends AbstractIndexShardComponent {
                     }
                 }
                 // write term vectors
-                termVectorsResponse.setFields(termVectorsByField, request.selectedFields(), request.getFlags(), topLevelFields, dfs, termVectorsFilter);
+                termVectorsResponse.setFields(termVectorsByField, request.selectedFields(), request.getFlags(), topLevelFields, dfs, termVectorsFilter, request.vectorizer());
             }
         } catch (Throwable ex) {
             throw new ElasticsearchException("failed to execute term vector request", ex);

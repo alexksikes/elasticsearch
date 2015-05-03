@@ -24,6 +24,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.action.termvectors.TermVectorsRequest.Flag;
+import org.elasticsearch.action.termvectors.vectorize.Vectorizer;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
@@ -51,11 +52,12 @@ final class TermVectorsWriter {
     }
 
     void setFields(Fields termVectorsByField, Set<String> selectedFields, EnumSet<Flag> flags, Fields topLevelFields,
-                   @Nullable AggregatedDfs dfs, @Nullable TermVectorsFilter termVectorsFilter) throws IOException {
+                   @Nullable AggregatedDfs dfs, @Nullable TermVectorsFilter termVectorsFilter, @Nullable Vectorizer vectorizer) throws IOException {
         int numFieldsWritten = 0;
         PostingsEnum docsAndPosEnum = null;
         PostingsEnum docsEnum = null;
         boolean hasScores = termVectorsFilter != null;
+        boolean hasVector = vectorizer != null;
 
         for (String field : termVectorsByField) {
             if ((selectedFields != null) && (!selectedFields.contains(field))) {
@@ -101,35 +103,45 @@ final class TermVectorsWriter {
                 }
 
                 startTerm(termBytesRef);
+                TermStatistics termStatistics = null;
                 if (flags.contains(Flag.TermStatistics)) {
                     // get the doc frequency
                     if (dfs != null) {
-                        final TermStatistics statistics = dfs.termStatistics().get(term);
-                        writeTermStatistics(statistics == null ? new TermStatistics(termBytesRef, 0, 0) : statistics);
-                    } else {
-                        if (foundTerm) {
-                            writeTermStatistics(topLevelIterator);
-                        } else {
-                            writeTermStatistics(new TermStatistics(termBytesRef, 0, 0));
-                        }
+                        termStatistics = dfs.termStatistics().get(term);
+                    } else if (foundTerm) {
+                        termStatistics = newTermStatistics(topLevelIterator);
                     }
+                    writeTermStatistics(termStatistics != null ? termStatistics : new TermStatistics(termBytesRef, 0, 0));
                 }
+                int freq = 1;
                 if (useDocsAndPos) {
                     // given we have pos or offsets
                     docsAndPosEnum = writeTermWithDocsAndPos(iterator, docsAndPosEnum, positions, offsets, payloads);
+//                    freq = docsAndPosEnum.freq();
                 } else {
                     // if we do not have the positions stored, we need to
                     // get the frequency from a PostingsEnum.
                     docsEnum = writeTermWithDocsOnly(iterator, docsEnum);
+//                    freq = docsEnum.freq();
                 }
                 if (hasScores) {
                     writeScoreTerm(termVectorsFilter.getScoreTerm(term));
+                }
+                if (hasVector) {
+                    vectorizer.add(term, termStatistics, freq);
                 }
             }
             numFieldsWritten++;
         }
         response.setTermVectorsField(output);
+        if (hasVector) {
+            response.setVector(vectorizer.writeVector());
+        }
         response.setHeader(writeHeader(numFieldsWritten, flags.contains(Flag.TermStatistics), flags.contains(Flag.FieldStatistics), hasScores));
+    }
+
+    private TermStatistics newTermStatistics(TermsEnum termsEnum) throws IOException {
+        return new TermStatistics(termsEnum.term(), termsEnum.docFreq(), termsEnum.totalTermFreq());
     }
 
     private BytesReference writeHeader(int numFieldsWritten, boolean getTermStatistics, boolean getFieldStatistics, boolean scores) throws IOException {
@@ -229,15 +241,6 @@ final class TermVectorsWriter {
     private void startTerm(BytesRef term) throws IOException {
         output.writeVInt(term.length);
         output.writeBytes(term.bytes, term.offset, term.length);
-    }
-
-    private void writeTermStatistics(TermsEnum topLevelIterator) throws IOException {
-        int docFreq = topLevelIterator.docFreq();
-        assert (docFreq >= -1);
-        writePotentiallyNegativeVInt(docFreq);
-        long ttf = topLevelIterator.totalTermFreq();
-        assert (ttf >= -1);
-        writePotentiallyNegativeVLong(ttf);
     }
 
     private void writeTermStatistics(TermStatistics termStatistics) throws IOException {

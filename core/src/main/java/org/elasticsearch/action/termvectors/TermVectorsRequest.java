@@ -28,6 +28,7 @@ import org.elasticsearch.action.DocumentRequest;
 import org.elasticsearch.action.ValidateActions;
 import org.elasticsearch.action.get.MultiGetRequest;
 import org.elasticsearch.action.support.single.shard.SingleShardRequest;
+import org.elasticsearch.action.termvectors.vectorize.Vectorizer;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -76,6 +77,8 @@ public class TermVectorsRequest extends SingleShardRequest<TermVectorsRequest> i
     private Map<String, String> perFieldAnalyzer;
 
     private FilterSettings filterSettings;
+    
+    private Vectorizer vectorizer;
 
     public static final class FilterSettings {
         public Integer maxNumTerms;
@@ -457,6 +460,15 @@ public class TermVectorsRequest extends SingleShardRequest<TermVectorsRequest> i
         return this;
     }
 
+    public Vectorizer vectorizer() {
+        return vectorizer;
+    }
+
+    public TermVectorsRequest vectorizer(Vectorizer vectorizer) {
+        this.vectorizer = vectorizer;
+        return this;
+    }
+
     private void setFlag(Flag flag, boolean set) {
         if (set && !flagsEnum.contains(flag)) {
             flagsEnum.add(flag);
@@ -522,6 +534,10 @@ public class TermVectorsRequest extends SingleShardRequest<TermVectorsRequest> i
             filterSettings = new FilterSettings();
             filterSettings.readFrom(in);
         }
+        if (in.readBoolean()) {
+            vectorizer = new Vectorizer();
+            vectorizer.readFrom(in);
+        }
         realtime = in.readBoolean();
         versionType = VersionType.fromValue(in.readByte());
         version = in.readLong();
@@ -559,6 +575,10 @@ public class TermVectorsRequest extends SingleShardRequest<TermVectorsRequest> i
         out.writeBoolean(filterSettings != null);
         if (filterSettings != null) {
             filterSettings.writeTo(out);
+        }
+        out.writeBoolean(vectorizer != null);
+        if (vectorizer != null) {
+            vectorizer.writeTo(out);
         }
         out.writeBoolean(realtime());
         out.writeByte(versionType.getValue());
@@ -607,6 +627,8 @@ public class TermVectorsRequest extends SingleShardRequest<TermVectorsRequest> i
                     termVectorsRequest.perFieldAnalyzer(readPerFieldAnalyzer(parser.map()));
                 } else if (currentFieldName.equals("filter")) {
                     termVectorsRequest.filterSettings(readFilterSettings(parser, termVectorsRequest));
+                } else if (currentFieldName.equals("vectorizer")) {
+                    termVectorsRequest.vectorizer(Vectorizer.parse(parser));
                 } else if ("_index".equals(currentFieldName)) { // the following is important for multi request parsing.
                     termVectorsRequest.index = parser.text();
                 } else if ("_type".equals(currentFieldName)) {
