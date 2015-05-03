@@ -25,6 +25,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchParseException;
+import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.BytesStreamInput;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
@@ -85,7 +86,7 @@ public class Vectorizer {
         XContentParser.Token token;
         String currentFieldName = null;
         String fieldName = null;
-        Set<String> words = new HashSet<>(); // to remove duplicates first
+        Set<String> words = new LinkedHashSet<>();  // to remove duplicates but preserve order
         ValueOption valueOption = null;
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
@@ -111,7 +112,7 @@ public class Vectorizer {
         if (fieldName == null) {
             throw new ElasticsearchParseException("The parameter " + fieldName + " is required!");
         }
-        for (String word : words) {
+        for (String word : words) {  //todo: inefficient but parsing may change with field name as key 
             terms.add(new Term(fieldName, word));
         }
         valueOptions.put(fieldName, valueOption);
@@ -170,7 +171,10 @@ public class Vectorizer {
         return terms.indexOf(term);
     }
 
-    private int getValue(String fieldName, TermStatistics termStatistics, int freq) {
+    private int getValue(String fieldName, @Nullable TermStatistics termStatistics, int freq) {
+        if (termStatistics == null) {  // term statistics were not requested!
+            return -1;
+        }
         switch (valueOptions.get(fieldName)) {
             case DOC_FREQ:
                 return (int) termStatistics.docFreq();
