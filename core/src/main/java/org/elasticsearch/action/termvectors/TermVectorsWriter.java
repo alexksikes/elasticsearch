@@ -54,7 +54,6 @@ final class TermVectorsWriter {
     void setFields(Fields termVectorsByField, Set<String> selectedFields, EnumSet<Flag> flags, Fields topLevelFields,
                    @Nullable AggregatedDfs dfs, @Nullable TermVectorsFilter termVectorsFilter, @Nullable Vectorizer vectorizer) throws IOException {
         int numFieldsWritten = 0;
-        PostingsEnum docsAndPosEnum = null;
         PostingsEnum docsEnum = null;
         boolean hasScores = termVectorsFilter != null;
         boolean hasVector = vectorizer != null;
@@ -116,13 +115,15 @@ final class TermVectorsWriter {
                 int freq = 1;
                 if (useDocsAndPos) {
                     // given we have pos or offsets
-                    docsAndPosEnum = writeTermWithDocsAndPos(iterator, docsAndPosEnum, positions, offsets, payloads);
-//                    freq = docsAndPosEnum.freq();
+                    docsEnum = writeTermWithDocsAndPos(iterator, docsEnum, positions, offsets, payloads);
+                    freq = docsEnum.freq();
+                    docsEnum.nextDoc();
                 } else {
                     // if we do not have the positions stored, we need to
                     // get the frequency from a PostingsEnum.
                     docsEnum = writeTermWithDocsOnly(iterator, docsEnum);
-//                    freq = docsEnum.freq();
+                    freq = docsEnum.freq();
+                    docsEnum.nextDoc();
                 }
                 if (hasScores) {
                     writeScoreTerm(termVectorsFilter.getScoreTerm(term));
@@ -167,8 +168,6 @@ final class TermVectorsWriter {
         int nextDoc = docsEnum.nextDoc();
         assert nextDoc != DocIdSetIterator.NO_MORE_DOCS;
         writeFreq(docsEnum.freq());
-        nextDoc = docsEnum.nextDoc();
-        assert nextDoc == DocIdSetIterator.NO_MORE_DOCS;
         return docsEnum;
     }
 
@@ -193,8 +192,6 @@ final class TermVectorsWriter {
                 writePayload(docsAndPosEnum.getPayload());
             }
         }
-        nextDoc = docsAndPosEnum.nextDoc();
-        assert nextDoc == DocIdSetIterator.NO_MORE_DOCS;
         return docsAndPosEnum;
     }
 

@@ -58,10 +58,7 @@ public class Vectorizer {
     public Vectorizer(ArrayList<Term> terms, Map<String, ValueOption> valueOptions) {
         this.terms = terms;
         this.size = terms.size();
-        this.valueOptions = new HashMap<>();
-        for (String fieldName : valueOptions.keySet()) {
-            setValueOption(fieldName, valueOptions.get(fieldName));
-        }
+        this.valueOptions = valueOptions;
         this.coordQ = new CoordQ(size);
     }
 
@@ -172,17 +169,13 @@ public class Vectorizer {
     }
 
     private int getValue(String fieldName, @Nullable TermStatistics termStatistics, int freq) {
-        if (termStatistics == null) {  // term statistics were not requested!
-            return -1;
+        ValueOption valueOption = valueOptions.get(fieldName);
+        if (valueOption == ValueOption.DOC_FREQ) {
+            return termStatistics != null ? (int) termStatistics.docFreq() : -1;  // -1 term stats not requested
+        } else if (valueOption == ValueOption.TTF) {
+            return termStatistics != null ? (int) termStatistics.totalTermFreq() : -1;  // -1 term stats not requested
         }
-        switch (valueOptions.get(fieldName)) {
-            case DOC_FREQ:
-                return (int) termStatistics.docFreq();
-            case TTF:
-                return (int) termStatistics.totalTermFreq();
-            default:
-                return freq;  // default
-        }
+        return freq; // default
     }
 
     public static SparseVector readVector(BytesReference vector) throws IOException {
