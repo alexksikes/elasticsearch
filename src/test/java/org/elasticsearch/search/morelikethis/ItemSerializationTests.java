@@ -20,16 +20,17 @@
 package org.elasticsearch.search.morelikethis;
 
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
-import org.elasticsearch.action.get.MultiGetRequest;
+import org.elasticsearch.action.termvectors.MultiTermVectorsRequest;
+import org.elasticsearch.action.termvectors.TermVectorsRequest;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesArray;
+import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.index.VersionType;
-import org.elasticsearch.index.query.MoreLikeThisQueryBuilder;
 import org.elasticsearch.index.query.MoreLikeThisQueryBuilder.Item;
-import org.elasticsearch.search.fetch.source.FetchSourceContext;
 import org.elasticsearch.test.ElasticsearchTestCase;
 import org.junit.Test;
 
@@ -42,34 +43,17 @@ import static org.hamcrest.Matchers.is;
 
 public class ItemSerializationTests extends ElasticsearchTestCase {
 
-    private Item generateRandomItem(int arraySize, int stringSize) {
+    public static Item generateRandomItem(int fieldsSize, int stringSize) {
         String index = randomAsciiOfLength(stringSize);
         String type = randomAsciiOfLength(stringSize);
         String id = String.valueOf(Math.abs(randomInt()));
         String routing = randomBoolean() ? randomAsciiOfLength(stringSize) : null;
-        String[] fields = generateRandomStringArray(arraySize, stringSize, true);
+        String[] fields = generateRandomStringArray(fieldsSize, stringSize, true);
 
         long version = Math.abs(randomLong());
         VersionType versionType = RandomPicks.randomFrom(new Random(), VersionType.values());
 
-        FetchSourceContext fetchSourceContext;
-        switch (randomIntBetween(0, 3)) {
-            case 0 :
-                fetchSourceContext = new FetchSourceContext(randomBoolean());
-                break;
-            case 1 :
-                fetchSourceContext = new FetchSourceContext(generateRandomStringArray(arraySize, stringSize, true));
-                break;
-            case 2 :
-                fetchSourceContext = new FetchSourceContext(generateRandomStringArray(arraySize, stringSize, true),
-                        generateRandomStringArray(arraySize, stringSize, true));
-                break;
-            default:
-                fetchSourceContext = null;
-                break;
-        }
-        return (Item) new Item(index, type, id).routing(routing).fields(fields).version(version).versionType(versionType)
-                .fetchSourceContext(fetchSourceContext);
+        return (Item) new Item(index, type, id).routing(routing).selectedFields(fields).version(version).versionType(versionType);
     }
 
     private String ItemToJSON(Item item) throws IOException {
@@ -82,9 +66,11 @@ public class ItemSerializationTests extends ElasticsearchTestCase {
         return XContentHelper.convertToJson(builder.bytes(), false);
     }
 
-    private MultiGetRequest.Item JSONtoItem(String json) throws Exception {
-        MultiGetRequest request = new MultiGetRequest().add(null, null, null, null, new BytesArray(json), true);
-        return request.getItems().get(0);
+    private Item JSONtoItem(String json) throws Exception {
+        BytesReference data = new BytesArray(json);
+        Item item = new Item();
+        TermVectorsRequest.parseRequest(item, XContentFactory.xContent(data).createParser(data));
+        return item;
     }
 
     @Test
@@ -95,33 +81,29 @@ public class ItemSerializationTests extends ElasticsearchTestCase {
         for (int i = 0; i < numOfTrials; i++) {
             Item item1 = generateRandomItem(maxArraySize, maxStringSize);
             String json = ItemToJSON(item1);
-            MultiGetRequest.Item item2 = JSONtoItem(json);
+            Item item2 = JSONtoItem(json);
             assertEquals(item1, item2);
         }
     }
 
-    private List<MultiGetRequest.Item> testItemsFromJSON(String json) throws Exception {
-        MultiGetRequest request = new MultiGetRequest();
-        request.add(null, null, null, null, new BytesArray(json), true);
-        List<MultiGetRequest.Item> items = request.getItems();
+    private List<Item> testItemsFromJSON(String json) throws Exception {
+        MultiTermVectorsRequest request = new MultiTermVectorsRequest();
+        request.add(new Item(), new BytesArray(json));
+        List<Item> items = (List<Item>) request.subRequests();
 
         assertEquals(items.size(), 3);
-        for (MultiGetRequest.Item item : items) {
+        for (Item item : items) {
             assertThat(item.index(), is("test"));
             assertThat(item.type(), is("type"));
-            FetchSourceContext fetchSource = item.fetchSourceContext();
             switch (item.id()) {
                 case "1" :
-                    assertThat(fetchSource.fetchSource(), is(false));
+                    assertThat(item.selectedFields().toArray(Strings.EMPTY_ARRAY), is(new String[]{"field1"}));
                     break;
                 case "2" :
-                    assertThat(fetchSource.fetchSource(), is(true));
-                    assertThat(fetchSource.includes(), is(new String[]{"field3", "field4"}));
+                    assertThat(item.selectedFields().toArray(Strings.EMPTY_ARRAY), is(new String[]{"field2"}));
                     break;
                 case "3" :
-                    assertThat(fetchSource.fetchSource(), is(true));
-                    assertThat(fetchSource.includes(), is(new String[]{"user"}));
-                    assertThat(fetchSource.excludes(), is(new String[]{"user.location"}));
+                    assertThat(item.selectedFields().toArray(Strings.EMPTY_ARRAY), is(new String[]{"field3"}));
                     break;
                 default:
                     fail("item with id: " + item.id() + " is not 1, 2 or 3");
@@ -134,18 +116,16 @@ public class ItemSerializationTests extends ElasticsearchTestCase {
     @Test
     public void testSimpleItemSerializationFromFile() throws Exception {
         // test items from JSON
-        List<MultiGetRequest.Item> itemsFromJSON = testItemsFromJSON(
+        List<Item> itemsFromJSON = testItemsFromJSON(
                 copyToStringFromClasspath("/org/elasticsearch/search/morelikethis/items.json"));
 
         // create builder from items
         XContentBuilder builder = XContentFactory.jsonBuilder();
         builder.startObject();
         builder.startArray("docs");
-        for (MultiGetRequest.Item item : itemsFromJSON) {
-            MoreLikeThisQueryBuilder.Item itemForBuilder = (MoreLikeThisQueryBuilder.Item) new MoreLikeThisQueryBuilder.Item(
-                    item.index(), item.type(), item.id())
-                    .fetchSourceContext(item.fetchSourceContext())
-                    .fields(item.fields());
+        for (Item item : itemsFromJSON) {
+            Item itemForBuilder = (Item) new Item(
+                    item.index(), item.type(), item.id()).selectedFields(item.selectedFields().toArray(Strings.EMPTY_ARRAY));
             itemForBuilder.toXContent(builder, ToXContent.EMPTY_PARAMS);
         }
         builder.endArray();

@@ -336,6 +336,14 @@ public abstract class StreamInput extends InputStream {
         return ret;
     }
 
+    @Nullable
+    public String[] readOptionalStringArray() throws IOException {
+        if (readBoolean()) {
+            return readStringArray();
+        }
+        return null;
+    }
+
     /**
      * Read in a list of strings. List can be empty but not {@code null}.
      */

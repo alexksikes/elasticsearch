@@ -121,6 +121,29 @@ public class TermVectorsRequest extends SingleShardOperationRequest<TermVectorsR
             out.writeOptionalVInt(minWordLength);
             out.writeOptionalVInt(maxWordLength);
         }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(maxNumTerms, minTermFreq, maxTermFreq, minDocFreq, maxDocFreq, minWordLength, maxWordLength);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null || getClass() != obj.getClass()) {
+                return false;
+            }
+            FilterSettings other = (FilterSettings) obj;
+            return Objects.equals(maxNumTerms, other.maxNumTerms) &&
+                    Objects.equals(minTermFreq, other.minTermFreq) &&
+                    Objects.equals(maxTermFreq, other.maxTermFreq) &&
+                    Objects.equals(minDocFreq, other.minDocFreq) &&
+                    Objects.equals(maxDocFreq, other.maxDocFreq) &&
+                    Objects.equals(minWordLength, other.minWordLength) &&
+                    Objects.equals(maxWordLength, other.maxWordLength);
+        }
     }
 
     private EnumSet<Flag> flagsEnum = EnumSet.of(Flag.Positions, Flag.Offsets, Flag.Payloads,
@@ -637,6 +660,36 @@ public class TermVectorsRequest extends SingleShardOperationRequest<TermVectorsR
             String[] fieldsAsArray = new String[fields.size()];
             termVectorsRequest.selectedFields(fields.toArray(fieldsAsArray));
         }
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(index, type, id, doc, routing, versionType, version, preference, selectedFields, realtime,
+                perFieldAnalyzer, filterSettings, flagsEnum);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        TermVectorsRequest other = (TermVectorsRequest) obj;
+        return Objects.equals(index, other.index) &&
+                Objects.equals(type, other.type) &&
+                Objects.equals(id, other.id) &&
+                Objects.equals(doc, other.doc) &&
+                Objects.equals(routing, other.routing) &&
+                Objects.equals(versionType, other.versionType) &&
+                Objects.equals(version, other.version) &&
+                Objects.equals(preference, other.preference) &&
+                Objects.equals(selectedFields, other.selectedFields) &&
+                Objects.equals(realtime, other.realtime) &&
+                Objects.equals(perFieldAnalyzer, other.perFieldAnalyzer) &&
+                Objects.equals(filterSettings, other.filterSettings) &&
+                Objects.equals(flagsEnum, other.flagsEnum);
     }
 
     private static Map<String, String> readPerFieldAnalyzer(Map<String, Object> map) {

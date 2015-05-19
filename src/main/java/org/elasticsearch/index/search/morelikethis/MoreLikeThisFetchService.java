@@ -47,23 +47,26 @@ public class MoreLikeThisFetchService extends AbstractComponent {
     }
 
     public Fields[] fetch(MultiTermVectorsRequest requests) throws IOException {
-        return getFields(fetchResponse(requests), requests);
+        return getFields(fetchResponse(requests), requests.getRequests());
     }
 
     public MultiTermVectorsResponse fetchResponse(MultiTermVectorsRequest requests) throws IOException {
         return client.multiTermVectors(requests).actionGet();
     }
 
-    public static Fields[] getFields(MultiTermVectorsResponse responses, MultiTermVectorsRequest requests) throws IOException {
+    public static Fields[] getFields(MultiTermVectorsResponse responses, List<? extends TermVectorsRequest> requests) throws IOException {
         List<Fields> likeFields = new ArrayList<>();
 
-        Set<Item> items = new HashSet<>();
+        Set<Item> itemSet = new HashSet<>();
         for (TermVectorsRequest request : requests) {
-            items.add(new Item(request.index(), request.type(), request.id()));
+            if (request instanceof Item && ((Item) request).isLikeText()) {  // skip on like text items
+                continue;
+            }
+            itemSet.add(new Item(request.index(), request.type(), request.id()));
         }
 
         for (MultiTermVectorsItemResponse response : responses) {
-            if (!hasResponseFromRequest(response, items)) {
+            if (!hasResponseFromRequest(response, itemSet)) {
                 continue;
             }
             if (response.isFailed()) {

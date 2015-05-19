@@ -389,7 +389,7 @@ public class RangeQueryBuilder extends MultiTermQueryBuilder implements Streamab
             return false;
         }
         RangeQueryBuilder other = (RangeQueryBuilder) obj;
-        return Objects.equals(fieldName, other.fieldName) &&
+        return Objects.equals(fieldName, other.fieldName) && 
                Objects.equals(from, other.from) &&
                Objects.equals(to, other.to) &&
                Objects.equals(timeZone, other.timeZone) &&

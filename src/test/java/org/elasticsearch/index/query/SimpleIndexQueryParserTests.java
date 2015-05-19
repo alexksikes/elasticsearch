@@ -21,53 +21,22 @@ package org.elasticsearch.index.query;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-
 import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
-import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.index.*;
 import org.apache.lucene.index.memory.MemoryIndex;
 import org.apache.lucene.queries.BoostingQuery;
 import org.apache.lucene.queries.ExtendedCommonTermsQuery;
 import org.apache.lucene.queries.TermsQuery;
-import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.*;
 import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.DisjunctionMaxQuery;
-import org.apache.lucene.search.FuzzyQuery;
-import org.apache.lucene.search.MatchAllDocsQuery;
-import org.apache.lucene.search.MultiTermQuery;
-import org.apache.lucene.search.NumericRangeQuery;
-import org.apache.lucene.search.PrefixQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.QueryWrapperFilter;
-import org.apache.lucene.search.RegexpQuery;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.TermRangeQuery;
-import org.apache.lucene.search.WildcardQuery;
-import org.apache.lucene.search.spans.FieldMaskingSpanQuery;
-import org.apache.lucene.search.spans.SpanContainingQuery;
-import org.apache.lucene.search.spans.SpanFirstQuery;
-import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
-import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.search.spans.SpanNotQuery;
-import org.apache.lucene.search.spans.SpanOrQuery;
-import org.apache.lucene.search.spans.SpanTermQuery;
-import org.apache.lucene.search.spans.SpanWithinQuery;
+import org.apache.lucene.search.spans.*;
 import org.apache.lucene.spatial.prefix.IntersectsPrefixTreeFilter;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util.automaton.TooComplexToDeterminizeException;
-import org.elasticsearch.action.termvectors.MultiTermVectorsItemResponse;
-import org.elasticsearch.action.termvectors.MultiTermVectorsRequest;
-import org.elasticsearch.action.termvectors.MultiTermVectorsResponse;
-import org.elasticsearch.action.termvectors.TermVectorsRequest;
-import org.elasticsearch.action.termvectors.TermVectorsResponse;
+import org.elasticsearch.action.termvectors.*;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.compress.CompressedString;
@@ -91,6 +60,7 @@ import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.ParsedDocument;
 import org.elasticsearch.index.mapper.core.NumberFieldMapper;
+import org.elasticsearch.index.query.MoreLikeThisQueryBuilder.Item;
 import org.elasticsearch.index.search.child.ParentConstantScoreQuery;
 import org.elasticsearch.index.search.geo.GeoDistanceRangeQuery;
 import org.elasticsearch.index.search.geo.GeoPolygonQuery;
@@ -110,43 +80,10 @@ import java.util.List;
 import static org.elasticsearch.common.io.Streams.copyToBytesFromClasspath;
 import static org.elasticsearch.common.io.Streams.copyToStringFromClasspath;
 import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
-import static org.elasticsearch.index.query.QueryBuilders.andQuery;
-import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
-import static org.elasticsearch.index.query.QueryBuilders.boostingQuery;
-import static org.elasticsearch.index.query.QueryBuilders.constantScoreQuery;
-import static org.elasticsearch.index.query.QueryBuilders.disMaxQuery;
-import static org.elasticsearch.index.query.QueryBuilders.filteredQuery;
-import static org.elasticsearch.index.query.QueryBuilders.functionScoreQuery;
-import static org.elasticsearch.index.query.QueryBuilders.fuzzyQuery;
-import static org.elasticsearch.index.query.QueryBuilders.matchAllQuery;
-import static org.elasticsearch.index.query.QueryBuilders.moreLikeThisQuery;
-import static org.elasticsearch.index.query.QueryBuilders.notQuery;
-import static org.elasticsearch.index.query.QueryBuilders.orQuery;
-import static org.elasticsearch.index.query.QueryBuilders.prefixQuery;
-import static org.elasticsearch.index.query.QueryBuilders.queryStringQuery;
-import static org.elasticsearch.index.query.QueryBuilders.rangeQuery;
-import static org.elasticsearch.index.query.QueryBuilders.regexpQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanContainingQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanFirstQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanNearQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanNotQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanOrQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanTermQuery;
-import static org.elasticsearch.index.query.QueryBuilders.spanWithinQuery;
-import static org.elasticsearch.index.query.QueryBuilders.termQuery;
-import static org.elasticsearch.index.query.QueryBuilders.termsQuery;
-import static org.elasticsearch.index.query.QueryBuilders.wildcardQuery;
+import static org.elasticsearch.index.query.QueryBuilders.*;
 import static org.elasticsearch.index.query.functionscore.ScoreFunctionBuilders.factorFunction;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertBooleanSubQuery;
-import static org.hamcrest.Matchers.closeTo;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
-import static org.hamcrest.Matchers.sameInstance;
+import static org.hamcrest.Matchers.*;
 
 /**
  *
@@ -183,7 +120,6 @@ public class SimpleIndexQueryParserTests extends ElasticsearchSingleNodeTest {
         @Override
         public Query parse(QueryParseContext parseContext) throws IOException, QueryParsingException {
             return fromXContent(parseContext).toQuery(parseContext);
-
         }
 
         @Override
@@ -1723,13 +1659,9 @@ public class SimpleIndexQueryParserTests extends ElasticsearchSingleNodeTest {
     }
 
     @Test
-    public void testMoreLikeThisIds() throws Exception {
-        MoreLikeThisQueryParser parser = (MoreLikeThisQueryParser) queryParser.queryParser("more_like_this");
-        parser.setFetchService(new MockMoreLikeThisFetchService());
-
-        IndexQueryParserService queryParser = queryParser();
-        String query = copyToStringFromClasspath("/org/elasticsearch/index/query/mlt-items.json");
-        Query parsedQuery = queryParser.parse(query).query();
+    // NO COMMIT: will not pass, we should have access to the builder invoked so to mock fetch service
+    public void testMoreLikeThisBuilderIds() throws Exception {
+        Query parsedQuery = queryParser().parse(newTestMoreLikeThisQueryBuilder()).query();
         assertThat(parsedQuery, instanceOf(BooleanQuery.class));
         BooleanQuery booleanQuery = (BooleanQuery) parsedQuery;
         assertThat(booleanQuery.getClauses().length, is(1));
@@ -1748,15 +1680,10 @@ public class SimpleIndexQueryParserTests extends ElasticsearchSingleNodeTest {
     }
 
     @Test
-    public void testMLTMinimumShouldMatch() throws Exception {
-        // setup for mocking fetching items
-        MoreLikeThisQueryParser parser = (MoreLikeThisQueryParser) queryParser.queryParser("more_like_this");
-        parser.setFetchService(new MockMoreLikeThisFetchService());
-
+    // NO COMMIT: will not pass, we should have access to the builder invoked so to mock fetch service
+    public void testMoreLikeThisBuilderMinShouldMatch() throws Exception {
         // parsing the ES query
-        IndexQueryParserService queryParser = queryParser();
-        String query = copyToStringFromClasspath("/org/elasticsearch/index/query/mlt-items.json");
-        BooleanQuery parsedQuery = (BooleanQuery) queryParser.parse(query).query();
+        BooleanQuery parsedQuery = (BooleanQuery) queryParser().parse(newTestMoreLikeThisQueryBuilder()).query();
 
         // get MLT query, other clause is for include/exclude items
         MoreLikeThisQuery mltQuery = (MoreLikeThisQuery) parsedQuery.getClauses()[0].getQuery();
@@ -1783,7 +1710,23 @@ public class SimpleIndexQueryParserTests extends ElasticsearchSingleNodeTest {
         minNumberShouldMatch = ((BooleanQuery) (clauses[1].getQuery())).getMinimumNumberShouldMatch();
         assertThat(minNumberShouldMatch, is(2));
     }
+    
+    private QueryBuilder newTestMoreLikeThisQueryBuilder() {
+        // create a mlt query builder for testing
+        MoreLikeThisQueryBuilder mltQueryBuilder = moreLikeThisQuery(new String[]{"name.first", "name.last"})
+                .like(new Item("Apache Lucene"), new Item("test", "person", "1"), new Item("test", "person", "2"))
+                .ids(new String[]{"3", "4"})
+                .include(true)
+                .minTermFreq(1)
+                .maxQueryTerms(12);
+        
+        // setup for mocking fetching items
+        mltQueryBuilder.setFetchService(new MockMoreLikeThisFetchService());
+        
+        return mltQueryBuilder;
+    }
 
+    // NO COMMIT: this should be generalized and moved to MoreLikeThisQueryBuilderTest?
     private static class MockMoreLikeThisFetchService extends MoreLikeThisFetchService {
 
         public MockMoreLikeThisFetchService() {
