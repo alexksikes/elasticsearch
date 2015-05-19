@@ -121,6 +121,36 @@ public class TermVectorsRequest extends SingleShardOperationRequest<TermVectorsR
             out.writeOptionalVInt(minWordLength);
             out.writeOptionalVInt(maxWordLength);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof FilterSettings)) return false;
+
+            FilterSettings that = (FilterSettings) o;
+
+            if (maxDocFreq != null ? !maxDocFreq.equals(that.maxDocFreq) : that.maxDocFreq != null) return false;
+            if (maxNumTerms != null ? !maxNumTerms.equals(that.maxNumTerms) : that.maxNumTerms != null) return false;
+            if (maxTermFreq != null ? !maxTermFreq.equals(that.maxTermFreq) : that.maxTermFreq != null) return false;
+            if (maxWordLength != null ? !maxWordLength.equals(that.maxWordLength) : that.maxWordLength != null) return false;
+            if (minDocFreq != null ? !minDocFreq.equals(that.minDocFreq) : that.minDocFreq != null) return false;
+            if (minTermFreq != null ? !minTermFreq.equals(that.minTermFreq) : that.minTermFreq != null) return false;
+            if (minWordLength != null ? !minWordLength.equals(that.minWordLength) : that.minWordLength != null) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = maxNumTerms != null ? maxNumTerms.hashCode() : 0;
+            result = 31 * result + (minTermFreq != null ? minTermFreq.hashCode() : 0);
+            result = 31 * result + (maxTermFreq != null ? maxTermFreq.hashCode() : 0);
+            result = 31 * result + (minDocFreq != null ? minDocFreq.hashCode() : 0);
+            result = 31 * result + (maxDocFreq != null ? maxDocFreq.hashCode() : 0);
+            result = 31 * result + (minWordLength != null ? minWordLength.hashCode() : 0);
+            result = 31 * result + (maxWordLength != null ? maxWordLength.hashCode() : 0);
+            return result;
+        }
     }
 
     private EnumSet<Flag> flagsEnum = EnumSet.of(Flag.Positions, Flag.Offsets, Flag.Payloads,
@@ -637,6 +667,48 @@ public class TermVectorsRequest extends SingleShardOperationRequest<TermVectorsR
             String[] fieldsAsArray = new String[fields.size()];
             termVectorsRequest.selectedFields(fields.toArray(fieldsAsArray));
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof TermVectorsRequest)) return false;
+
+        TermVectorsRequest that = (TermVectorsRequest) o;
+
+        if (version != that.version) return false;
+        if (doc != null ? !doc.equals(that.doc) : that.doc != null) return false;
+        if (filterSettings != null ? !filterSettings.equals(that.filterSettings) : that.filterSettings != null) return false;
+        if (flagsEnum != null ? !flagsEnum.equals(that.flagsEnum) : that.flagsEnum != null) return false;
+        if (index != null ? !index.equals(that.index) : that.index != null) return false;
+        if (id != null ? !id.equals(that.id) : that.id != null) return false;
+        if (perFieldAnalyzer != null ? !perFieldAnalyzer.equals(that.perFieldAnalyzer) : that.perFieldAnalyzer != null) return false;
+        if (preference != null ? !preference.equals(that.preference) : that.preference != null) return false;
+        if (realtime != null ? !realtime.equals(that.realtime) : that.realtime != null) return false;
+        if (routing != null ? !routing.equals(that.routing) : that.routing != null) return false;
+        if (selectedFields != null ? !selectedFields.equals(that.selectedFields) : that.selectedFields != null) return false;
+        if (type != null ? !type.equals(that.type) : that.type != null) return false;
+        if (versionType != that.versionType) return false;
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = index != null ? index.hashCode() : 0;
+        result = 31 * result + (type != null ? type.hashCode() : 0);
+        result = 31 * result + (id != null ? id.hashCode() : 0);
+        result = 31 * result + (doc != null ? doc.hashCode() : 0);
+        result = 31 * result + (routing != null ? routing.hashCode() : 0);
+        result = 31 * result + (versionType != null ? versionType.hashCode() : 0);
+        result = 31 * result + (int) (version ^ (version >>> 32));
+        result = 31 * result + (preference != null ? preference.hashCode() : 0);
+        result = 31 * result + (selectedFields != null ? selectedFields.hashCode() : 0);
+        result = 31 * result + (realtime != null ? realtime.hashCode() : 0);
+        result = 31 * result + (perFieldAnalyzer != null ? perFieldAnalyzer.hashCode() : 0);
+        result = 31 * result + (filterSettings != null ? filterSettings.hashCode() : 0);
+        result = 31 * result + (flagsEnum != null ? flagsEnum.hashCode() : 0);
+        return result;
     }
 
     private static Map<String, String> readPerFieldAnalyzer(Map<String, Object> map) {

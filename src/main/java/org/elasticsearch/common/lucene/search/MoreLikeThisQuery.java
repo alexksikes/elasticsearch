@@ -23,6 +23,7 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.index.*;
+import org.apache.lucene.queries.TermsQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
@@ -32,6 +33,7 @@ import org.apache.lucene.search.similarities.TFIDFSimilarity;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.io.FastStringReader;
+import org.elasticsearch.index.mapper.internal.UidFieldMapper;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -65,6 +67,7 @@ public class MoreLikeThisQuery extends Query {
     private int maxWordLen = XMoreLikeThis.DEFAULT_MAX_WORD_LENGTH;
     private boolean boostTerms = XMoreLikeThis.DEFAULT_BOOST;
     private float boostTermsFactor = 1;
+    private BytesRef[] excludes;
 
 
     public MoreLikeThisQuery() {
@@ -78,6 +81,10 @@ public class MoreLikeThisQuery extends Query {
     }
 
     @Override
+    /**
+     * NO COMMIT: missing similarity, likeFields, ignoreFields, ignoreText, analyzer, excludes
+     * also: likeText, moreLikeFields could be null
+     */
     public int hashCode() {
         int result = boostTerms ? 1 : 0;
         result = 31 * result + Float.floatToIntBits(boostTermsFactor);
@@ -96,6 +103,10 @@ public class MoreLikeThisQuery extends Query {
     }
 
     @Override
+    /** 
+     * NO COMMIT: missing likeFields, ignoreFields, ignoreText, excludes
+     * also: analyzer could be null
+     */
     public boolean equals(Object obj) {
         if (obj == null || getClass() != obj.getClass())
             return false;
@@ -175,6 +186,10 @@ public class MoreLikeThisQuery extends Query {
             Queries.applyMinimumShouldMatch((BooleanQuery) mltQuery, minimumShouldMatch);
             bq.add(mltQuery, BooleanClause.Occur.SHOULD);
         }
+        if (this.excludes != null) {
+            TermsQuery query = new TermsQuery(UidFieldMapper.NAME, this.excludes);
+            bq.add(query, BooleanClause.Occur.MUST_NOT);
+        }
 
         bq.setBoost(getBoost());
         return bq;
@@ -217,7 +232,8 @@ public class MoreLikeThisQuery extends Query {
 
     @Override
     public String toString(String field) {
-        return "like:" + Arrays.toString(likeText);
+        // NO COMMIT: this should be more descriptive
+        return "like:" + likeText != null ? Arrays.toString(likeText) : "";
     }
 
     public String getLikeText() {
@@ -373,5 +389,9 @@ public class MoreLikeThisQuery extends Query {
 
     public void setBoostTermsFactor(float boostTermsFactor) {
         this.boostTermsFactor = boostTermsFactor;
+    }
+
+    public void setExclude(BytesRef... excludes) {
+        this.excludes = excludes;
     }
 }

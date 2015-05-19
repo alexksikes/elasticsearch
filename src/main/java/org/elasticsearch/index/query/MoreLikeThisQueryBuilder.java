@@ -19,62 +19,73 @@
 
 package org.elasticsearch.index.query;
 
-import org.elasticsearch.action.get.MultiGetRequest;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.index.Fields;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.action.termvectors.MultiTermVectorsRequest;
+import org.elasticsearch.action.termvectors.MultiTermVectorsResponse;
+import org.elasticsearch.action.termvectors.TermVectorsRequest;
 import org.elasticsearch.common.Nullable;
-import org.elasticsearch.common.bytes.BytesReference;
+import org.elasticsearch.common.Strings;
+import org.elasticsearch.common.inject.Inject;
+import org.elasticsearch.common.io.stream.StreamInput;
+import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.io.stream.Streamable;
+import org.elasticsearch.common.lucene.search.MoreLikeThisQuery;
+import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.common.lucene.uid.Versions;
-import org.elasticsearch.common.xcontent.ToXContent;
-import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentFactory;
-import org.elasticsearch.common.xcontent.XContentParser;
-import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.common.xcontent.*;
 import org.elasticsearch.index.VersionType;
-import org.elasticsearch.search.fetch.source.FetchSourceContext;
+import org.elasticsearch.index.analysis.Analysis;
+import org.elasticsearch.index.search.morelikethis.MoreLikeThisFetchService;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
+
+import static org.elasticsearch.index.mapper.Uid.createUidAsBytes;
 
 /**
  * A more like this query that finds documents that are "like" the provided {@link #likeText(String)}
  * which is checked against the fields the query is constructed with.
  */
-public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQueryBuilder<MoreLikeThisQueryBuilder> {
+public class MoreLikeThisQueryBuilder extends QueryBuilder implements Streamable, BoostableQueryBuilder<MoreLikeThisQueryBuilder> {
 
     /**
-     * A single get item. Pure delegate to multi get.
+     * A single get item. Pure delegate to multi term vectors.
      */
-    public static final class Item extends MultiGetRequest.Item implements ToXContent {
+    /** NO COMMIT: we should rather have an Item object in MultiTermVectorsRequest from which to extend to
+     * and then only allow certain parameters of term vectors to be set?
+     */
+    public static final class Item extends TermVectorsRequest implements ToXContent {
         public static final Item[] EMPTY_ARRAY = new Item[0];
 
-        private BytesReference doc;
         private String likeText;
 
         public Item() {
             super();
+            positions(false);
+            offsets(false);
+            payloads(false);
+            fieldStatistics(false);
+            termStatistics(false);
         }
 
-        public Item(String index, @Nullable String type, String id) {
+        public Item(String index, String type, String id) {
             super(index, type, id);
         }
 
         public Item(String likeText) {
             this.likeText = likeText;
         }
-
-        public BytesReference doc() {
-            return doc;
-        }
-
-        public Item doc(XContentBuilder doc) {
-            this.doc = doc.bytes();
-            return this;
+        
+        public boolean isLikeText() {
+            return likeText != null;
         }
 
         @Override
         public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
+            // NO COMMIT: some fields missing here, also move this to TermVectorRequest?
             if (this.likeText != null) {
                 return builder.value(this.likeText);
             }
@@ -89,38 +100,21 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
                 builder.field("_id", this.id());
             }
             if (this.doc() != null) {
-                XContentType contentType = XContentFactory.xContentType(doc);
+                XContentType contentType = XContentFactory.xContentType(doc());
                 if (contentType == builder.contentType()) {
-                    builder.rawField("doc", doc);
+                    builder.rawField("doc", doc());
                 } else {
-                    XContentParser parser = XContentFactory.xContent(contentType).createParser(doc);
+                    XContentParser parser = XContentFactory.xContent(contentType).createParser(doc());
                     parser.nextToken();
                     builder.field("doc");
                     builder.copyCurrentStructure(parser);
                 }
             }
-            if (this.fields() != null) {
-                builder.array("fields", this.fields());
+            if (this.selectedFields() != null) {
+                builder.array("fields", this.selectedFields());
             }
             if (this.routing() != null) {
                 builder.field("_routing", this.routing());
-            }
-            if (this.fetchSourceContext() != null) {
-                FetchSourceContext source = this.fetchSourceContext();
-                String[] includes = source.includes();
-                String[] excludes = source.excludes();
-                if (includes.length == 0 && excludes.length == 0) {
-                    builder.field("_source", source.fetchSource());
-                } else if (includes.length > 0 && excludes.length == 0) {
-                    builder.array("_source", source.includes());
-                } else if (excludes.length > 0) {
-                    builder.startObject("_source");
-                    if (includes.length > 0) {
-                        builder.array("includes", source.includes());
-                    }
-                    builder.array("excludes", source.excludes());
-                    builder.endObject();
-                }
             }
             if (this.version() != Versions.MATCH_ANY) {
                 builder.field("_version", this.version());
@@ -130,12 +124,59 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
             }
             return builder.endObject();
         }
+
+        @Override
+        public void readFrom(StreamInput in) throws IOException {
+            if (in.readBoolean()) {
+                this.likeText = in.readString();
+            } else {
+                super.readFrom(in);
+            }
+        }
+
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            out.writeBoolean(isLikeText());
+            if (isLikeText()) {
+                out.writeString(likeText);
+            } else {
+                super.writeTo(out);
+            }
+        }
+
+        public static Item readItem(StreamInput in) throws IOException {
+            Item item = new Item();
+            item.readFrom(in);
+            return item;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Item)) return false;
+            if (!super.equals(o)) return false;
+
+            Item item = (Item) o;
+
+            if (likeText != null ? !likeText.equals(item.likeText) : item.likeText != null) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = super.hashCode();
+            result = 31 * result + (likeText != null ? likeText.hashCode() : 0);
+            return result;
+        }
     }
 
-    private final String[] fields;
-    private List<Item> docs = new ArrayList<>();
-    private List<Item> ignoreDocs = new ArrayList<>();
-    private Boolean include = null;
+    private MoreLikeThisFetchService fetchService = null;
+    
+    private String[] fields;
+    private List<Item> items = new ArrayList<>();
+    private List<Item> ignoreItems = new ArrayList<>();
+    private Boolean include;
     private String minimumShouldMatch = null;
     private int minTermFreq = -1;
     private int maxQueryTerms = -1;
@@ -144,10 +185,10 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
     private int maxDocFreq = -1;
     private int minWordLength = -1;
     private int maxWordLength = -1;
-    private float boostTerms = -1;
-    private float boost = -1;
+    private float boostTerms = 0;
     private String analyzer;
     private Boolean failOnUnsupportedField;
+    private float boost = -1;
     private String queryName;
 
     /**
@@ -166,13 +207,27 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
         this.fields = fields;
     }
 
+    @Inject(optional = true)
+    public void setFetchService(@Nullable MoreLikeThisFetchService fetchService) {
+            this.fetchService = fetchService;
+    }
+
+    public MoreLikeThisQueryBuilder fields(String... fields) {
+        this.fields = fields;
+        return this;
+    }
+
+    public String[] fields() {
+        return this.fields;
+    }
+
     /**
      * Sets the documents to use in order to find documents that are "like" this.
      *
-     * @param docs the documents to use when generating the 'More Like This' query.
+     * @param items the documents to use when generating the 'More Like This' query.
      */
-    public MoreLikeThisQueryBuilder like(Item... docs) {
-        this.docs = Arrays.asList(docs);
+    public MoreLikeThisQueryBuilder like(Item... items) {
+        this.items = Arrays.asList(items);
         return this;
     }
 
@@ -182,28 +237,9 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
      * @param likeText the text to use when generating the 'More Like This' query.
      */
     public MoreLikeThisQueryBuilder like(String... likeText) {
-        this.docs = new ArrayList<>();
+        this.items = new ArrayList<>();
         for (String text : likeText) {
-            this.docs.add(new Item(text));
-        }
-        return this;
-    }
-
-    /**
-     * Sets the documents from which the terms should not be selected from.
-     */
-    public MoreLikeThisQueryBuilder ignoreLike(Item... docs) {
-        this.ignoreDocs = Arrays.asList(docs);
-        return this;
-    }
-
-    /**
-     * Sets the text from which the terms should not be selected from.
-     */
-    public MoreLikeThisQueryBuilder ignoreLike(String... likeText) {
-        this.ignoreDocs = new ArrayList<>();
-        for (String text : likeText) {
-            this.ignoreDocs.add(new Item(text));
+            this.items.add(new Item(text));
         }
         return this;
     }
@@ -212,7 +248,7 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
      * Adds a document to use in order to find documents that are "like" this.
      */
     public MoreLikeThisQueryBuilder addItem(Item item) {
-        this.docs.add(item);
+        this.items.add(item);
         return this;
     }
 
@@ -220,7 +256,26 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
      * Adds some text to use in order to find documents that are "like" this.
      */
     public MoreLikeThisQueryBuilder addLikeText(String likeText) {
-        this.docs.add(new Item(likeText));
+        this.items.add(new Item(likeText));
+        return this;
+    }
+
+    /**
+     * Sets the documents from which the terms should not be selected from.
+     */
+    public MoreLikeThisQueryBuilder ignoreLike(Item... items) {
+        this.ignoreItems = Arrays.asList(items);
+        return this;
+    }
+
+    /**
+     * Sets the text from which the terms should not be selected from.
+     */
+    public MoreLikeThisQueryBuilder ignoreLike(String... likeText) {
+        this.ignoreItems = new ArrayList<>();
+        for (String text : likeText) {
+            this.ignoreItems.add(new Item(text));
+        }
         return this;
     }
 
@@ -229,7 +284,7 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
      */
     @Deprecated
     public MoreLikeThisQueryBuilder likeText(String likeText) {
-        return like(likeText);
+        return like(new Item(likeText));
     }
 
     @Deprecated
@@ -242,8 +297,8 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
     }
 
     @Deprecated
-    public MoreLikeThisQueryBuilder docs(Item... docs) {
-        return like(docs);
+    public MoreLikeThisQueryBuilder docs(Item... items) {
+        return like(items);
     }
 
     public MoreLikeThisQueryBuilder include(boolean include) {
@@ -349,6 +404,13 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
         this.boost = boost;
         return this;
     }
+    
+    /**
+     * Gets the boost for this query.
+     */
+    public float boost() {
+        return this.boost;
+    }
 
     /**
      * Whether to fail or return no result when this query is run against a field which is not supported such as binary/numeric fields.
@@ -366,6 +428,14 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
         return this;
     }
 
+
+    /**
+     * Gets the query name for the query.
+     */
+    public String queryName() {
+        return this.queryName;
+    }
+
     @Override
     protected void doXContent(XContentBuilder builder, Params params) throws IOException {
         String likeFieldName = MoreLikeThisQueryParser.Fields.LIKE.getPreferredName();
@@ -377,13 +447,13 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
             }
             builder.endArray();
         }
-        if (this.docs.isEmpty()) {
+        if (this.items.isEmpty()) {
             throw new IllegalArgumentException("more_like_this requires '" + likeFieldName + "' to be provided");
         } else {
-            builder.field(likeFieldName, docs);
+            builder.field(likeFieldName, items);
         }
-        if (!ignoreDocs.isEmpty()) {
-            builder.field(MoreLikeThisQueryParser.Fields.LIKE.getPreferredName(), ignoreDocs);
+        if (!ignoreItems.isEmpty()) {
+            builder.field(MoreLikeThisQueryParser.Fields.IGNORE_LIKE.getPreferredName(), ignoreItems);
         }
         if (minimumShouldMatch != null) {
             builder.field(MoreLikeThisQueryParser.Fields.MINIMUM_SHOULD_MATCH.getPreferredName(), minimumShouldMatch);
@@ -395,11 +465,7 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
             builder.field(MoreLikeThisQueryParser.Fields.MAX_QUERY_TERMS.getPreferredName(), maxQueryTerms);
         }
         if (stopWords != null && stopWords.length > 0) {
-            builder.startArray(MoreLikeThisQueryParser.Fields.STOP_WORDS.getPreferredName());
-            for (String stopWord : stopWords) {
-                builder.value(stopWord);
-            }
-            builder.endArray();
+            builder.array(MoreLikeThisQueryParser.Fields.STOP_WORDS.getPreferredName(), stopWords);
         }
         if (minDocFreq != -1) {
             builder.field(MoreLikeThisQueryParser.Fields.MIN_DOC_FREQ.getPreferredName(), minDocFreq);
@@ -435,7 +501,291 @@ public class MoreLikeThisQueryBuilder extends QueryBuilder implements BoostableQ
     }
 
     @Override
+    public Query toQuery(QueryParseContext parseContext) throws IOException {
+        MoreLikeThisQuery query = new MoreLikeThisQuery();
+        
+        // first set some basic settings
+        query.setSimilarity(parseContext.searchSimilarity());
+
+        if (minTermFreq != -1) {
+            query.setMinTermFrequency(minTermFreq);
+        }
+        if (maxQueryTerms != -1) {
+            query.setMaxQueryTerms(maxQueryTerms);
+        }
+        if (minDocFreq != -1) {
+            query.setMinDocFreq(minDocFreq);
+        }
+        if (maxDocFreq != -1) {
+            query.setMaxDocFreq(maxDocFreq);
+        }
+        if (minWordLength != -1) {
+            query.setMinWordLen(minWordLength);
+        }
+        if (maxWordLength != -1) {
+            query.setMaxWordLen(maxWordLength);
+        }
+        if (boostTerms > 0) {
+            query.setBoostTerms(true);
+            query.setBoostTermsFactor(boostTerms);
+        }
+        query.setMinimumShouldMatch(minimumShouldMatch);
+
+        // set analyzer
+        if (analyzer != null) {
+            query.setAnalyzer(parseContext.analysisService().analyzer(analyzer));
+        } else {
+            query.setAnalyzer(parseContext.mapperService().searchAnalyzer());
+        }
+        
+        // set like text fields
+        boolean useDefaultField = (fields == null);
+        if (useDefaultField) {
+            fields = new String[]{(parseContext.defaultField())};
+        }
+        query.setMoreLikeFields(fields);
+        
+        // prepare for requests and handle defaults
+        MultiTermVectorsRequest requests = new MultiTermVectorsRequest();
+        List<String> likeTexts = new ArrayList<>();
+        List<String> ignoreTexts = new ArrayList<>();
+        prepareRequest(requests, likeTexts, items, useDefaultField, parseContext);
+        prepareRequest(requests, ignoreTexts, ignoreItems, useDefaultField, parseContext);
+        
+        // first take care of likeTexts
+        if (!likeTexts.isEmpty()) {
+            query.setLikeText(likeTexts);
+        }
+        if (!ignoreTexts.isEmpty()) {
+            query.setIgnoreText(ignoreTexts);
+        }
+        
+        // possibly remove unsupported fields when using like text items
+        if (!likeTexts.isEmpty() || !ignoreTexts.isEmpty()) {
+            fields = removeUnsupportedFields(Arrays.asList(fields), query.getAnalyzer(), failOnUnsupportedField);
+        }
+        
+        // nothing to do in this case
+        if (requests.isEmpty() && likeTexts.isEmpty() || !likeTexts.isEmpty() && fields.length == 0) {
+            return Queries.newMatchNoDocsQuery();
+        }
+
+        // now we can fetch the actual items if there are any
+        if (!requests.isEmpty()) {
+            MultiTermVectorsResponse responses = fetchService.fetchResponse(requests);
+
+            // getting the Fields for liked items
+            query.setLikeText(MoreLikeThisFetchService.getFields(responses, items));
+
+            // getting the Fields for ignored items
+            if (!ignoreItems.isEmpty()) {
+                Fields[] ignoreFields = MoreLikeThisFetchService.getFields(responses, ignoreItems);
+                if (ignoreFields.length > 0) {
+                    query.setIgnoreText(ignoreFields);
+                }
+            }
+
+            // exclude the items from the search
+            if (include == null || !include) {
+                handleExclude(query, requests);
+            }
+        }
+
+        // setting other meta parameters
+        query.setBoost(this.boost);
+        if (this.queryName != null) {
+            parseContext.addNamedQuery(queryName, query);
+        }
+        return query;
+    }
+
+    private void prepareRequest(MultiTermVectorsRequest requests, List<String> likeTexts, List<Item> items, boolean useDefaultField, QueryParseContext parseContext) {
+        // set default index, type and fields if not specified
+        for (Item item : items) {
+            // handle like text items
+            if (item.isLikeText()) {
+                likeTexts.add(item.likeText);
+                continue;
+            }
+            if (item.index() == null) {
+                item.index(parseContext.index().name());
+            }
+            if (item.type() == null) {
+                if (parseContext.queryTypes().size() > 1) {
+                    throw new QueryParsingException(parseContext, "ambiguous type for item with id: " + item.id()
+                            + " and index: " + item.index());
+                } else {
+                    item.type(parseContext.queryTypes().iterator().next());
+                }
+            }
+            // default fields if not present but don't override for artificial docs
+            if (item.selectedFields() == null && item.doc() == null) {
+                if (useDefaultField) {
+                    item.selectedFields("*");
+                } else {
+                    item.selectedFields(fields);
+                }
+            }
+            requests.add(item);
+        }
+    }
+
+    private String[] removeUnsupportedFields(List<String> moreLikeFields, Analyzer analyzer, @Nullable Boolean failOnUnsupportedField) throws IOException {
+        for (Iterator<String> it = moreLikeFields.iterator(); it.hasNext(); ) {
+            final String fieldName = it.next();
+            if (!Analysis.generatesCharacterTokenStream(analyzer, fieldName)) {
+                if (failOnUnsupportedField != null || failOnUnsupportedField) {
+                    throw new IllegalArgumentException("more_like_this doesn't support binary/numeric fields: [" + fieldName + "]");
+                } else {
+                    it.remove();
+                }
+            }
+        }
+        return moreLikeFields.toArray(Strings.EMPTY_ARRAY);
+    }
+    
+    private void handleExclude(MoreLikeThisQuery mltQuery, MultiTermVectorsRequest likeItems) {
+        // artificial docs get assigned a random id and should be disregarded
+        List<BytesRef> uids = new ArrayList<>();
+        for (TermVectorsRequest item : likeItems) {
+            if (item.doc() != null) {
+                continue;
+            }
+            uids.add(createUidAsBytes(item.type(), item.id()));
+        }
+        if (!uids.isEmpty()) {
+            mltQuery.setExclude(uids.toArray(new BytesRef[0]));
+        }
+    }
+
+    @Override
+    public QueryValidationException validate() {
+        QueryValidationException validationException = null;
+        if (items == null || items.isEmpty()) {
+            validationException = QueryValidationException.addValidationError("more_like_this requires 'like' to be specified", validationException);
+        }
+        if (fields != null && fields.length == 0) {
+            validationException = QueryValidationException.addValidationError("more_like_this requires 'fields' to be non-empty", validationException);
+        }
+        return validationException;
+    }
+
+    @Override
     protected String parserName() {
         return MoreLikeThisQueryParser.NAME;
+    }
+
+    @Override
+    public void readFrom(StreamInput in) throws IOException {
+        fields = in.readOptionalStringArray();
+        
+        int size = in.readVInt();
+        items = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            items.add(Item.readItem(in));
+        }
+        size = in.readVInt();
+        ignoreItems = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            ignoreItems.add(Item.readItem(in));
+        }
+
+        include = in.readOptionalBoolean();
+        minimumShouldMatch = in.readOptionalString();
+        minTermFreq = in.readVInt();
+        maxQueryTerms = in.readVInt();
+        stopWords = in.readOptionalStringArray();
+        minDocFreq = in.readVInt();
+        maxDocFreq = in.readVInt();
+        minWordLength = in.readVInt();
+        maxWordLength = in.readVInt();
+        boostTerms = in.readFloat();
+        analyzer = in.readOptionalString();
+        failOnUnsupportedField = in.readOptionalBoolean();
+        
+        boost = in.readFloat();
+        queryName = in.readOptionalString();
+    }
+
+    @Override
+    public void writeTo(StreamOutput out) throws IOException {
+        out.writeOptionalStringArray(fields);
+        
+        out.writeVInt(items.size());
+        for (Item item : items) {
+            item.writeTo(out);
+        }
+        out.writeVInt(ignoreItems.size());
+        for (Item item : ignoreItems) {
+            item.writeTo(out);
+        }
+
+        out.writeOptionalBoolean(include);
+        out.writeOptionalString(minimumShouldMatch);
+        out.writeVInt(minTermFreq);
+        out.writeVInt(maxQueryTerms);
+        out.writeOptionalStringArray(stopWords);
+        out.writeVInt(minDocFreq);
+        out.writeVInt(maxDocFreq);
+        out.writeVInt(minWordLength);
+        out.writeVInt(maxWordLength);
+        out.writeFloat(boostTerms);
+        out.writeOptionalString(analyzer);
+        out.writeOptionalBoolean(failOnUnsupportedField);
+
+        out.writeFloat(boost);
+        out.writeOptionalString(queryName);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MoreLikeThisQueryBuilder)) return false;
+
+        MoreLikeThisQueryBuilder that = (MoreLikeThisQueryBuilder) o;
+
+        if (Float.compare(that.boost, boost) != 0) return false;
+        if (Float.compare(that.boostTerms, boostTerms) != 0) return false;
+        if (maxDocFreq != that.maxDocFreq) return false;
+        if (maxQueryTerms != that.maxQueryTerms) return false;
+        if (maxWordLength != that.maxWordLength) return false;
+        if (minDocFreq != that.minDocFreq) return false;
+        if (minTermFreq != that.minTermFreq) return false;
+        if (minWordLength != that.minWordLength) return false;
+        if (analyzer != null ? !analyzer.equals(that.analyzer) : that.analyzer != null) return false;
+        if (failOnUnsupportedField != null ? !failOnUnsupportedField.equals(that.failOnUnsupportedField) : that.failOnUnsupportedField != null)
+            return false;
+        if (!Arrays.equals(fields, that.fields)) return false;
+        if (ignoreItems != null ? !ignoreItems.equals(that.ignoreItems) : that.ignoreItems != null) return false;
+        if (include != null ? !include.equals(that.include) : that.include != null) return false;
+        if (items != null ? !items.equals(that.items) : that.items != null) return false;
+        if (minimumShouldMatch != null ? !minimumShouldMatch.equals(that.minimumShouldMatch) : that.minimumShouldMatch != null)
+            return false;
+        if (queryName != null ? !queryName.equals(that.queryName) : that.queryName != null) return false;
+        if (!Arrays.equals(stopWords, that.stopWords)) return false;
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = fields != null ? Arrays.hashCode(fields) : 0;
+        result = 31 * result + (items != null ? items.hashCode() : 0);
+        result = 31 * result + (ignoreItems != null ? ignoreItems.hashCode() : 0);
+        result = 31 * result + (include != null ? include.hashCode() : 0);
+        result = 31 * result + (minimumShouldMatch != null ? minimumShouldMatch.hashCode() : 0);
+        result = 31 * result + minTermFreq;
+        result = 31 * result + maxQueryTerms;
+        result = 31 * result + (stopWords != null ? Arrays.hashCode(stopWords) : 0);
+        result = 31 * result + minDocFreq;
+        result = 31 * result + maxDocFreq;
+        result = 31 * result + minWordLength;
+        result = 31 * result + maxWordLength;
+        result = 31 * result + (boostTerms != +0.0f ? Float.floatToIntBits(boostTerms) : 0);
+        result = 31 * result + (analyzer != null ? analyzer.hashCode() : 0);
+        result = 31 * result + (failOnUnsupportedField != null ? failOnUnsupportedField.hashCode() : 0);
+        result = 31 * result + (boost != +0.0f ? Float.floatToIntBits(boost) : 0);
+        result = 31 * result + (queryName != null ? queryName.hashCode() : 0);
+        return result;
     }
 }

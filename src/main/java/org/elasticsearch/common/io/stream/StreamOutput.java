@@ -283,6 +283,15 @@ public abstract class StreamOutput extends OutputStream {
         }
     }
 
+    public void writeOptionalStringArray(@Nullable String[] array) throws IOException {
+        if (array == null) {
+            writeBoolean(false);
+        } else {
+            writeBoolean(true);
+            writeStringArray(array);
+        }
+    }
+
     /**
      * Write a list of strings. List can be empty but not {@code null}.
      */
