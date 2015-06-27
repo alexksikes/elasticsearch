@@ -27,10 +27,7 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.io.stream.BytesStreamInput;
-import org.elasticsearch.common.io.stream.BytesStreamOutput;
-import org.elasticsearch.common.io.stream.StreamInput;
-import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.io.stream.*;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentParser;
@@ -218,7 +215,7 @@ public class Vectorizer {
 
     public static class SparseVector implements Iterator<Coord>, ToXContent {
 
-        private BytesStreamInput vectorInput;
+        private StreamInput vectorInput;
         private int shape = 0;
         private int maxSize = 0;
         private int currentColumn = 0;
@@ -227,7 +224,7 @@ public class Vectorizer {
         }
 
         public SparseVector(BytesReference vectorInput) throws IOException {
-            this.vectorInput = new BytesStreamInput(vectorInput);
+            this.vectorInput = StreamInput.wrap(vectorInput);
             this.shape = this.vectorInput.readVInt();
             this.maxSize = this.vectorInput.readVInt();
         }

@@ -133,7 +133,7 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         return headerRef != null;
     }
 
-    private boolean hasVector() {
+    public boolean hasVector() {
         return vector != null;
     }
 
@@ -208,9 +208,12 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         if (isExists()) {
             buildTermVectors(builder);
         }
+        if (hasVector()) {
+            buildVector(builder, params);
+        }
         return builder;
     }
-    
+
     public void buildTermVectors(XContentBuilder builder) throws IOException {
         builder.startObject(FieldStrings.TERM_VECTORS);
         final CharsRefBuilder spare = new CharsRefBuilder();
@@ -219,6 +222,12 @@ public class TermVectorsResponse extends ActionResponse implements ToXContent {
         while (fieldIter.hasNext()) {
             buildField(builder, spare, theFields, fieldIter);
         }
+        builder.endObject();
+    }
+
+    public void buildVector(XContentBuilder builder, Params params) throws IOException {
+        builder.startObject(FieldStrings.VECTOR);
+        getVector().toXContent(builder, params);
         builder.endObject();
     }
 

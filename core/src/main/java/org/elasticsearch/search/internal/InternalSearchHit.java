@@ -550,6 +550,9 @@ public class InternalSearchHit implements SearchHit {
         }
         if (termVectorsResponse != null) {
             termVectorsResponse.buildTermVectors(builder);
+            if (termVectorsResponse.hasVector()) {
+                termVectorsResponse.buildVector(builder, params);
+            }
         }
         builder.endObject();
         return builder;

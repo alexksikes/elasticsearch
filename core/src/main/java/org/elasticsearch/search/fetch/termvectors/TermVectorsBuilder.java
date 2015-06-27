@@ -20,6 +20,7 @@
 package org.elasticsearch.search.fetch.termvectors;
 
 import org.elasticsearch.action.termvectors.TermVectorsRequest;
+import org.elasticsearch.action.termvectors.vectorize.Vectorizer;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 
