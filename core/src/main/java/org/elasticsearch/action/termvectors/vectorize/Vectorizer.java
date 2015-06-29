@@ -27,6 +27,7 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesReference;
+import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.io.stream.*;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
@@ -225,8 +226,35 @@ public class Vectorizer {
 
         public SparseVector(BytesReference vectorInput) throws IOException {
             this.vectorInput = StreamInput.wrap(vectorInput);
+            reset();
+        }
+
+        private void reset() throws IOException {
+            this.vectorInput.reset();
             this.shape = this.vectorInput.readVInt();
             this.maxSize = this.vectorInput.readVInt();
+        }
+        
+        public int getShape() {
+            return getShape();
+        }
+        
+        public int getMaxSize() {
+            return this.maxSize;
+        }
+        
+        public Tuple<int[], double[]> getIndicesAndValues() throws IOException {
+            reset();
+            int[] indices = new int[maxSize];
+            double[] values = new double[maxSize];
+            int i = 0;
+            while (hasNext()) {
+                Coord coord = next();
+                indices[i] = coord.x;
+                values[i] = coord.y;
+                i++;
+            }
+            return new Tuple<>(indices, values);
         }
 
         @Override
@@ -248,6 +276,8 @@ public class Vectorizer {
 
         @Override
         public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
+            reset();
+            
             builder.field("shape", shape);
             builder.startArray("vector");
             while (hasNext()) {
