@@ -19,6 +19,7 @@
 
 package org.elasticsearch.action.termvectors.vectorize;
 
+import com.google.common.collect.Lists;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.util.BytesRef;
@@ -28,7 +29,9 @@ import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.collect.Tuple;
-import org.elasticsearch.common.io.stream.*;
+import org.elasticsearch.common.io.stream.BytesStreamOutput;
+import org.elasticsearch.common.io.stream.StreamInput;
+import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentParser;
@@ -44,7 +47,7 @@ public class Vectorizer {
         TERM_FREQ, DOC_FREQ, TTF
     }
 
-    private ArrayList<Term> terms;
+    private List<Term> terms;
     private int size;
     private Map<String, ValueOption> valueOptions;
     private CoordQ coordQ = null;
@@ -53,9 +56,10 @@ public class Vectorizer {
         
     }
     
-    public Vectorizer(ArrayList<Term> terms, Map<String, ValueOption> valueOptions) {
-        this.terms = terms;
-        this.size = terms.size();
+    public Vectorizer(List<Term> terms, Map<String, ValueOption> valueOptions) {
+        LinkedHashSet<Term> uniqueTerms = new LinkedHashSet<>(terms); // remove duplicates
+        this.terms = Lists.newArrayList(uniqueTerms);
+        this.size = this.terms.size();
         this.valueOptions = valueOptions;
         this.coordQ = new CoordQ(size);
     }
@@ -69,7 +73,7 @@ public class Vectorizer {
     }
 
     public static Vectorizer parse(XContentParser parser) throws IOException {
-        ArrayList<Term> terms = new ArrayList<>();
+        List<Term> terms = new ArrayList<>();
         Map<String, ValueOption> valueOptions = new HashMap<>();
         while ((parser.nextToken()) != XContentParser.Token.END_ARRAY) {
             parseTerms(parser, terms, valueOptions);
@@ -77,11 +81,11 @@ public class Vectorizer {
         return new Vectorizer(terms, valueOptions);
     }
 
-    private static void parseTerms(XContentParser parser, ArrayList<Term> terms, Map<String, ValueOption> valueOptions) throws IOException {
+    private static void parseTerms(XContentParser parser, List<Term> terms, Map<String, ValueOption> valueOptions) throws IOException {
         XContentParser.Token token;
         String currentFieldName = null;
         String fieldName = null;
-        Set<String> words = new LinkedHashSet<>();  // to remove duplicates but preserve order
+        List<String> words = new ArrayList<>();
         ValueOption valueOption = null;
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
@@ -128,18 +132,20 @@ public class Vectorizer {
 
     public void readFrom(StreamInput in) throws IOException {
         this.size = in.readVInt();
+        this.terms = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             String fieldName = in.readString();
             BytesRef termBytesRef = in.readBytesRef();
             terms.add(new Term(fieldName, termBytesRef));
         }
-        valueOptions = new HashMap<>();
-        for (int i = 0; i < in.readVInt(); i++) {
+        int numOptions = in.readVInt();
+        this.valueOptions = new HashMap<>(numOptions);
+        for (int i = 0; i < numOptions; i++) {
             String fieldName = in.readString();
             ValueOption valueOption = parseValueOption(in.readString());
             valueOptions.put(fieldName, valueOption);
         }
-        coordQ = new CoordQ(size);
+        this.coordQ = new CoordQ(size);
     }
 
     public void writeTo(StreamOutput out) throws IOException {
@@ -151,7 +157,8 @@ public class Vectorizer {
         out.writeVInt(valueOptions.size());
         for (String fieldName : valueOptions.keySet()) {
             out.writeString(fieldName);
-            out.writeString(valueOptions.get(fieldName).name());
+            String valueOption = valueOptions.get(fieldName).name().toLowerCase();
+            out.writeString(valueOption);
         }
     }
     
@@ -233,10 +240,11 @@ public class Vectorizer {
             this.vectorInput.reset();
             this.shape = this.vectorInput.readVInt();
             this.maxSize = this.vectorInput.readVInt();
+            this.currentColumn = 0;
         }
         
         public int getShape() {
-            return getShape();
+            return this.shape;
         }
         
         public int getMaxSize() {
